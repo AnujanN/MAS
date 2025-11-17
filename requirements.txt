@@ -1,0 +1,22 @@
+# Multi-Agent System Dependencies
+spade==3.3.2
+aioxmpp==0.13.3
+
+# Web Framework
+flask==3.0.0
+flask-cors==4.0.0
+
+# Visualization
+pygame>=2.6.0
+
+# LLM Integration
+ollama==0.1.8
+requests==2.31.0
+
+# Data Processing
+numpy==1.26.2
+python-dateutil==2.8.2
+
+# Async Support
+aiohttp==3.9.1
+asyncio==3.4.3
