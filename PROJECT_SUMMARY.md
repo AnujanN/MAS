@@ -1,4 +1,4 @@
-# 📋 Project Summary
+ 📋 Project Summary
 
 ## D-MAS: Decentralized Multi-Agent Emergency Response System
 

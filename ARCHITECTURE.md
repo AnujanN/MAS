@@ -1,4 +1,4 @@
-# 🏗️ System Architecture Diagram
+ 🏗️ System Architecture Diagram
 
 ## Overall System Architecture
 
