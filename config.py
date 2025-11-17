@@ -61,13 +61,6 @@ PYGAME_CONFIG = {
     "fps": 30
 }
 
-# LLM Configuration
-LLM_CONFIG = {
-    "model": "llama3.2",  # Ollama model
-    "temperature": 0.1,
-    "timeout": 30
-}
-
 # BDI Agent Configuration
 BDI_CONFIG = {
     "reasoning_cycle_period": 1.0,  # seconds

@@ -1,5 +1,5 @@
 """
-DroneAgent - Autonomous scout with LLM-based sensor interpretation
+DroneAgent - Autonomous scout with sensor-based incident detection
 BDI-based agent that explores, detects incidents, and reports findings
 """
 import asyncio
@@ -12,11 +12,11 @@ import json
 
 from ontology import (
     AgentState, AgentStatus, Location, ResourceType, 
-    IncidentData, IncidentType, SeverityLevel
+    IncidentData, IncidentType, SeverityLevel, ResourceRequirement, IncidentStatus
 )
 from bdi_agent import BDIAgent, Belief, Desire, Intention
-from llm_integration import LLMTranslator
 from incident_agent import IncidentAgent
+import uuid
 
 
 class DroneScoutBehaviour(PeriodicBehaviour):
@@ -28,7 +28,7 @@ class DroneScoutBehaviour(PeriodicBehaviour):
         # Scan current area
         sensor_data = logic.scan_area()
         
-        # Use LLM to interpret sensor data
+        # Interpret sensor data (direct mapping, no LLM needed)
         detected_incident = logic.interpret_sensor_data(sensor_data)
         
         if detected_incident:
@@ -66,7 +66,6 @@ class DroneAgentLogic(BDIAgent):
             capacity={"battery": 100, "sensors": 1}
         )
         
-        self.llm = LLMTranslator()
         self.scanned_areas: List[Location] = []
         self.move_speed = 3.0
         self.detection_radius = 5.0
@@ -139,19 +138,42 @@ class DroneAgentLogic(BDIAgent):
         return sensor_data
     
     def interpret_sensor_data(self, sensor_data: Dict) -> Optional[IncidentData]:
-        """Use LLM to translate sensor data to formal incident"""
+        """
+        Simple detection logic: convert sensor readings to incident
+        No LLM needed - direct mapping of sensor data to incident types
+        """
         if not sensor_data.get("heat_detected") and not sensor_data.get("structural_anomaly"):
             return None
         
-        # Use LLM translator
-        incident = self.llm.sensor_to_ontology(sensor_data)
+        # Direct interpretation based on sensor readings
+        if sensor_data.get("heat_detected"):
+            incident_type = IncidentType.FIRE
+        elif sensor_data.get("structural_anomaly"):
+            incident_type = IncidentType.STRUCTURAL_COLLAPSE
+        else:
+            return None
         
-        if incident:
-            # Update location to sensor reading
-            incident.location = Location(
+        # Create incident data
+        incident = IncidentData(
+            incident_id=f"incident-{uuid.uuid4()}",
+            location=Location(
                 sensor_data.get("incident_x", sensor_data["x"]),
                 sensor_data.get("incident_y", sensor_data["y"])
-            )
+            ),
+            incident_type=incident_type,
+            severity=SeverityLevel(sensor_data.get("severity_hint", 3)),
+            status=IncidentStatus.REPORTED,
+            estimated_victims=random.randint(0, 5),
+            resources_needed=[
+                ResourceRequirement(
+                    resource_type=ResourceType.FIRE_TRUCK if incident_type == IncidentType.FIRE else ResourceType.AMBULANCE,
+                    quantity=1,
+                    priority=SeverityLevel(sensor_data.get("severity_hint", 3))
+                )
+            ],
+            assigned_agents=[],
+            reported_at=datetime.now()
+        )
         
         return incident
     

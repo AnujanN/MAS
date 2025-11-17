@@ -8,9 +8,9 @@ import random
 from datetime import datetime
 from typing import List, Dict
 
-from ontology import Location, IncidentData, AgentState, AgentStatus, ResourceType
-from llm_integration import LLMTranslator
+from ontology import Location, IncidentData, AgentState, AgentStatus, ResourceType, IncidentType, SeverityLevel, ResourceRequirement, IncidentStatus
 from web_server import run_flask, system_state
+import uuid
 
 
 class SimulatedAgent:
@@ -126,7 +126,6 @@ class SimulatedDrone:
             random.uniform(patrol_area[0], patrol_area[2]),
             random.uniform(patrol_area[1], patrol_area[3])
         )
-        self.llm = LLMTranslator()
         self.running = True
         self.detection_radius = 10.0
     
@@ -156,33 +155,55 @@ class SimulatedDrone:
             time.sleep(5)
     
     def detect_incident(self):
-        """Simulate detecting a new incident"""
-        sensor_data = {
-            "x": self.location.x + random.uniform(-5, 5),
-            "y": self.location.y + random.uniform(-5, 5),
-            "heat_detected": True,
-            "smoke_detected": True,
-            "heat_value": 200,
-            "description": "heat signature detected by drone"
+        """Simulate detecting a new incident - random generation, no LLM needed"""
+        # Randomly choose incident type and severity
+        incident_type = random.choice([IncidentType.FIRE, IncidentType.MEDICAL, IncidentType.STRUCTURAL_COLLAPSE])
+        severity = random.choice([SeverityLevel.MEDIUM, SeverityLevel.HIGH, SeverityLevel.CRITICAL])
+        
+        incident_location = Location(
+            self.location.x + random.uniform(-5, 5),
+            self.location.y + random.uniform(-5, 5)
+        )
+        
+        # Create incident
+        incident_id = f"incident-{uuid.uuid4()}"
+        
+        # Determine resources based on type
+        if incident_type == IncidentType.FIRE:
+            resource_type = ResourceType.FIRE_TRUCK
+        else:
+            resource_type = ResourceType.AMBULANCE
+        
+        incident = IncidentData(
+            incident_id=incident_id,
+            location=incident_location,
+            incident_type=incident_type,
+            severity=severity,
+            status=IncidentStatus.REPORTED,
+            description=f"Detected by {self.agent_id}",
+            estimated_victims=random.randint(0, 3),
+            resources_needed=[
+                ResourceRequirement(
+                    resource_type=resource_type,
+                    quantity=1,
+                    priority=severity
+                )
+            ],
+            assigned_agents=[],
+            reported_at=datetime.now()
+        )
+        
+        system_state["incidents"][incident.incident_id] = {
+            "incident_id": incident.incident_id,
+            "incident_type": incident.incident_type.value,
+            "severity": incident.severity.name,
+            "location": {"x": incident.location.x, "y": incident.location.y},
+            "status": "reported",
+            "description": incident.description,
+            "timestamp": incident.reported_at.isoformat()
         }
         
-        try:
-            incident = self.llm.sensor_to_ontology(sensor_data)
-            
-            if incident:
-                system_state["incidents"][incident.incident_id] = {
-                    "incident_id": incident.incident_id,
-                    "incident_type": incident.incident_type.value,
-                    "severity": incident.severity.name,
-                    "location": {"x": incident.location.x, "y": incident.location.y},
-                    "status": "reported",
-                    "description": f"Detected by {self.agent_id}",
-                    "timestamp": incident.timestamp.isoformat()
-                }
-                
-                print(f"[{self.agent_id}] Detected {incident.incident_type.value} at ({incident.location.x:.1f}, {incident.location.y:.1f})")
-        except:
-            pass  # LLM not available
+        print(f"[{self.agent_id}] Detected {incident.incident_type.value} at ({incident.location.x:.1f}, {incident.location.y:.1f})")
 
 
 def run_demo():

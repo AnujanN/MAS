@@ -9,9 +9,9 @@ import asyncio
 import threading
 from typing import Dict, List
 
-from ontology import Location, IncidentData, IncidentStatus
-from llm_integration import LLMTranslator
+from ontology import Location, IncidentData, IncidentStatus, IncidentType, SeverityLevel, ResourceType, ResourceRequirement
 from incident_agent import IncidentAgent
+import uuid
 
 
 app = Flask(__name__)
@@ -23,8 +23,6 @@ system_state = {
     "agents": {},
     "active": False
 }
-
-llm_translator = LLMTranslator()
 
 
 # HTML Template for simple UI
@@ -117,7 +115,21 @@ HTML_TEMPLATE = """
         
         <div class="panel">
             <h2>Report Emergency</h2>
-            <textarea id="report" placeholder="Describe the emergency (e.g., 'Building on fire at downtown!', 'Medical emergency, person collapsed')" rows="3"></textarea>
+            <label for="incidentType">Incident Type:</label>
+            <select id="incidentType" style="width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #444; border-radius: 4px; background: #1a1a1a; color: #fff;">
+                <option value="FIRE">🔥 Fire</option>
+                <option value="MEDICAL">🏥 Medical Emergency</option>
+                <option value="STRUCTURAL_COLLAPSE">🏗️ Structural Collapse</option>
+                <option value="HAZMAT">☣️ Hazmat Incident</option>
+                <option value="FLOOD">🌊 Flood</option>
+            </select>
+            <label for="severity">Severity:</label>
+            <select id="severity" style="width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #444; border-radius: 4px; background: #1a1a1a; color: #fff;">
+                <option value="1">Low</option>
+                <option value="2">Medium</option>
+                <option value="3" selected>High</option>
+                <option value="4">Critical</option>
+            </select>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <input type="number" id="locX" placeholder="Location X" value="50">
                 <input type="number" id="locY" placeholder="Location Y" value="50">
@@ -151,19 +163,23 @@ HTML_TEMPLATE = """
 
     <script>
         function reportIncident() {
-            const report = document.getElementById('report').value;
+            const incidentType = document.getElementById('incidentType').value;
+            const severity = parseInt(document.getElementById('severity').value);
             const x = parseFloat(document.getElementById('locX').value);
             const y = parseFloat(document.getElementById('locY').value);
             
             fetch('/api/incident/report', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({description: report, location: {x: x, y: y}})
+                body: JSON.stringify({
+                    incident_type: incidentType, 
+                    severity: severity,
+                    location: {x: x, y: y}
+                })
             })
             .then(r => r.json())
             .then(data => {
                 alert('Incident reported: ' + data.incident_id);
-                document.getElementById('report').value = '';
                 refreshIncidents();
             });
         }
@@ -209,14 +225,16 @@ def index():
 @app.route('/api/incident/report', methods=['POST'])
 def report_incident():
     """
-    Report new incident
+    Report new incident - receives structured data from UI
     Body: {
-        "description": "Natural language description",
+        "incident_type": "FIRE",
+        "severity": 3,
         "location": {"x": 0, "y": 0}
     }
     """
     data = request.json
-    description = data.get('description', '')
+    incident_type_str = data.get('incident_type', 'FIRE')
+    severity_value = data.get('severity', 3)
     loc_data = data.get('location', {})
     
     location = Location(
@@ -225,31 +243,65 @@ def report_incident():
         address=loc_data.get('address')
     )
     
-    # Use LLM to translate human input to formal ontology
-    incident = llm_translator.human_to_ontology(description, location)
+    # Direct mapping from structured input - no LLM needed!
+    incident_type = IncidentType(incident_type_str)
+    severity = SeverityLevel(severity_value)
     
-    if incident:
-        system_state["incidents"][incident.incident_id] = {
-            "incident_id": incident.incident_id,
-            "incident_type": incident.incident_type.value,
-            "severity": incident.severity.name,
-            "location": {"x": incident.location.x, "y": incident.location.y},
-            "status": incident.status.value,
-            "description": incident.description,
-            "timestamp": incident.timestamp.isoformat()
-        }
-        
-        # TODO: Spawn IncidentAgent here
-        # For now, just log
-        print(f"[Flask] Incident created: {incident.incident_id}")
-        
-        return jsonify({
-            "success": True,
-            "incident_id": incident.incident_id,
-            "incident": system_state["incidents"][incident.incident_id]
-        }), 201
+    # Determine required resources based on incident type
+    resources_needed = []
+    if incident_type == IncidentType.FIRE:
+        resources_needed.append(ResourceRequirement(
+            resource_type=ResourceType.FIRE_TRUCK,
+            quantity=1,
+            priority=severity
+        ))
+    elif incident_type in [IncidentType.MEDICAL, IncidentType.STRUCTURAL_COLLAPSE]:
+        resources_needed.append(ResourceRequirement(
+            resource_type=ResourceType.AMBULANCE,
+            quantity=1,
+            priority=severity
+        ))
+    elif incident_type == IncidentType.HAZMAT:
+        resources_needed.append(ResourceRequirement(
+            resource_type=ResourceType.FIRE_TRUCK,
+            quantity=1,
+            priority=severity
+        ))
     
-    return jsonify({"success": False, "error": "Could not parse incident"}), 400
+    # Create incident
+    incident_id = f"incident-{uuid.uuid4()}"
+    incident = IncidentData(
+        incident_id=incident_id,
+        location=location,
+        incident_type=incident_type,
+        severity=severity,
+        status=IncidentStatus.REPORTED,
+        description=f"{incident_type.value} reported at ({location.x:.1f}, {location.y:.1f})",
+        estimated_victims=1,
+        resources_needed=resources_needed,
+        assigned_agents=[],
+        reported_at=datetime.now()
+    )
+    
+    system_state["incidents"][incident.incident_id] = {
+        "incident_id": incident.incident_id,
+        "incident_type": incident.incident_type.value,
+        "severity": incident.severity.name,
+        "location": {"x": incident.location.x, "y": incident.location.y},
+        "status": incident.status.value,
+        "description": incident.description,
+        "timestamp": incident.reported_at.isoformat()
+    }
+    
+    # TODO: Spawn IncidentAgent here
+    # For now, just log
+    print(f"[Flask] Incident created: {incident.incident_id} - {incident_type.value} (Severity: {severity.name})")
+    
+    return jsonify({
+        "success": True,
+        "incident_id": incident.incident_id,
+        "incident": system_state["incidents"][incident.incident_id]
+    }), 201
 
 
 @app.route('/api/incidents', methods=['GET'])

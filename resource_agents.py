@@ -17,7 +17,6 @@ from ontology import (
     IncidentType, SeverityLevel, MessagePerformative, Desire
 )
 from bdi_agent import BDIAgent, Belief, Intention
-from llm_integration import LLMTranslator
 
 
 class CFPListenerBehaviour(CyclicBehaviour):
@@ -123,7 +122,6 @@ class ResourceAgentLogic(BDIAgent):
             capacity=self._get_initial_capacity()
         )
         
-        self.llm = LLMTranslator()
         self.known_incidents: Dict[str, Dict] = {}
         self.current_incident: Optional[Dict] = None
         self.move_speed = 2.0  # units per second
@@ -177,15 +175,21 @@ class ResourceAgentLogic(BDIAgent):
         }
     
     def _should_abandon_for(self, new_cfp: Dict) -> bool:
-        """Use LLM to decide if should abandon current task for new one"""
+        """
+        Simple BDI reasoning: decide if should abandon current task for new one
+        Uses distance and severity to make rational decision
+        """
         if not self.current_incident:
             return True
         
         current_severity = SeverityLevel(self.current_incident['severity'])
         new_severity = SeverityLevel(new_cfp['severity'])
         
-        # Simple heuristic: abandon if new incident is much more severe
-        return new_severity.value > current_severity.value + 1
+        # Simple heuristic: only abandon if new incident is CRITICAL and significantly more severe
+        if new_severity == SeverityLevel.CRITICAL and new_severity.value > current_severity.value + 1:
+            return True
+        
+        return False
     
     def commit_to_incident(self, assignment: Dict):
         """Commit to an incident"""
@@ -201,12 +205,15 @@ class ResourceAgentLogic(BDIAgent):
         })
     
     def evaluate_coalition_request(self, request: Dict) -> bool:
-        """Evaluate coalition request using LLM reasoning"""
-        if self.state.status != AgentStatus.EN_ROUTE:
-            return False
+        """
+        Simple BDI reasoning: evaluate coalition request
+        Joins coalition if incident is critical and agent is not too busy
+        """
+        if self.state.status == AgentStatus.ENGAGED:
+            return False  # Too busy
         
-        # Simplified: join if close by and incident is critical
-        return request.get('severity', 0) >= 4
+        # Join if incident is high severity or critical
+        return request.get('severity', 0) >= 3
     
     # BDI Implementation
     def deliberate(self) -> List[Desire]:
